@@ -27,9 +27,11 @@ import java.io.File;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLDecoder;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -48,15 +50,14 @@ public class ClasspathFileSource implements FileSource {
     private URI pathUri;
     private ZipFile zipFile;
     private File rootDirectory;
+    private ClassLoader classLoader;
 
     public ClasspathFileSource(String path) {
         this.path = path;
 
         try {
-            URL resource = firstNonNull(
-                    currentThread().getContextClassLoader(),
-                    Resources.class.getClassLoader())
-                        .getResource(path);
+            this.classLoader = firstNonNull(currentThread().getContextClassLoader(), Resources.class.getClassLoader());
+            final URL resource = classLoader.getResource(path);
 
             if (resource == null) {
                 rootDirectory = new File(path);
@@ -67,10 +68,12 @@ public class ClasspathFileSource implements FileSource {
             this.pathUri = resource.toURI();
 
             if (asList("jar", "war", "ear", "zip").contains(pathUri.getScheme())) {
-                String jarFileUri = pathUri.getSchemeSpecificPart().split("!")[0];
-                String jarFilePath = jarFileUri.replace("file:", "");
-                File file = new File(jarFilePath);
-                zipFile = new ZipFile(file);
+                //String jarFileUri = pathUri.getSchemeSpecificPart().split("!")[0];
+                //String jarFilePath = jarFileUri.replace("file:", "");
+                //File file = new File(jarFilePath);
+
+                String jarPath = resource.getPath().substring(5, resource.getPath().indexOf("!")); //strip out only the JAR file
+                zipFile = new ZipFile(URLDecoder.decode(jarPath, "UTF-8"));
             } else if (pathUri.getScheme().equals("file")) {
                 rootDirectory = new File(pathUri);
             } else {
@@ -80,6 +83,15 @@ public class ClasspathFileSource implements FileSource {
         } catch (Exception e) {
             throwUnchecked(e);
         }
+    }
+
+    private static <T> Iterable<T> toIterable(final Enumeration<T> e) {
+        return new Iterable<T>() {
+            @Override
+            public Iterator<T> iterator() {
+                return Iterators.forEnumeration(e);
+            }
+        };
     }
 
     private boolean isFileSystem() {
@@ -107,14 +119,18 @@ public class ClasspathFileSource implements FileSource {
     private URI getZipEntryUri(final String name) {
         final String lookFor = path + "/" + name;
         final Enumeration<? extends ZipEntry> enumeration = zipFile.entries();
-        StringBuilder candidates = new StringBuilder();
-        while(enumeration.hasMoreElements()) {
+        final StringBuilder candidates = new StringBuilder();
+
+        while (enumeration.hasMoreElements()) {
             final ZipEntry candidate = enumeration.nextElement();
+
             if (candidate.getName().endsWith(lookFor)) {
                 return getUriFor(candidate);
             }
-            candidates.append(candidate.getName() + "\n");
+
+            candidates.append(candidate.getName()).append("\n");
         }
+
         throw new RuntimeException("Was unable to find entry: \"" + lookFor + "\", found:\n" + candidates.toString());
     }
 
@@ -159,7 +175,7 @@ public class ClasspathFileSource implements FileSource {
 
     private URI getUriFor(ZipEntry jarEntry) {
         try {
-            return Resources.getResource(jarEntry.getName()).toURI();
+            return Objects.requireNonNull(classLoader.getResource(jarEntry.getName())).toURI();
         } catch (URISyntaxException e) {
             return throwUnchecked(e, URI.class);
         }
@@ -167,7 +183,12 @@ public class ClasspathFileSource implements FileSource {
 
     private void recursivelyAddFilesToList(File root, List<File> fileList) {
         File[] files = root.listFiles();
-        for (File file: files) {
+
+        if (null == files) {
+            return;
+        }
+
+        for (File file : files) {
             if (file.isDirectory()) {
                 recursivelyAddFilesToList(file, fileList);
             } else {
@@ -200,15 +221,6 @@ public class ClasspathFileSource implements FileSource {
 
     @Override
     public void deleteFile(String name) {
-    }
-
-    private static <T> Iterable<T> toIterable(final Enumeration<T> e) {
-        return new Iterable<T>() {
-            @Override
-            public Iterator<T> iterator() {
-                return Iterators.forEnumeration(e);
-            }
-        };
     }
 
     private void assertExistsAndIsDirectory() {
