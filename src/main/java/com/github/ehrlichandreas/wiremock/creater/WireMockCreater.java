@@ -9,6 +9,8 @@ import com.github.ehrlichandreas.wiremock.extension.responsetemplating.helpers.M
 import com.github.ehrlichandreas.wiremock.jetty9.JettyHttpServerFactory;
 import com.github.jknack.handlebars.Helper;
 import com.github.tomakehurst.wiremock.extension.responsetemplating.ResponseTemplateTransformer;
+import com.github.tomakehurst.wiremock.http.trafficlistener.ConsoleNotifyingWiremockNetworkTrafficListener;
+import com.github.tomakehurst.wiremock.http.trafficlistener.WiremockNetworkTrafficListener;
 import com.google.common.collect.ImmutableMap;
 
 public class WireMockCreater {
@@ -67,6 +69,9 @@ public class WireMockCreater {
 
         final JettyHttpServerFactory serverFactory = new JettyHttpServerFactory();
         wireMockConfiguration.httpServerFactory(serverFactory);
+
+        final WiremockNetworkTrafficListener networkTrafficListener = new ConsoleNotifyingWiremockNetworkTrafficListener();
+        wireMockConfiguration.networkTrafficListener(networkTrafficListener);
 
         return wireMockConfiguration;
     }

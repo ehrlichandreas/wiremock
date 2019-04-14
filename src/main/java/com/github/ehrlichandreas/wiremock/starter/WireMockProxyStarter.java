@@ -20,6 +20,7 @@ import org.springframework.core.env.EnumerablePropertySource;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.PropertySources;
 
+import com.github.ehrlichandreas.wiremock.core.Options;
 import com.github.ehrlichandreas.wiremock.creater.WireMockCreater;
 import com.github.ehrlichandreas.wiremock.creater.WireMockProperties;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -32,7 +33,9 @@ public abstract class WireMockProxyStarter extends WireMockStarter implements Wi
 
     private static final String PROXY_PROTOCOL = "http";
     private static final String PROXY_HOST = "localhost";
+    private static final boolean INIT_PROXIED_SERVERS_DEFAULT = true;
     private static final String LOAD_WIRE_MOCK_CREATER_METHOD_NAME = "loadWireMockCreater";
+    private boolean initProxiedServers = INIT_PROXIED_SERVERS_DEFAULT;
 
     public abstract String getWiremockServerPortPropertyName();
 
@@ -42,17 +45,38 @@ public abstract class WireMockProxyStarter extends WireMockStarter implements Wi
 
     public abstract String getWiremockProxyPropertiesPrefix();
 
+    public abstract String getWiremockInitProxiedServersPropertyName();
+
     @Override
     public int startWireMockServer() {
         final WireMockCreater wireMockCreater = loadWireMockCreater();
         final WireMockServer wireMock = wireMockCreater.createWireMock();
         wireMock.start();
 
-        initWireMockServersForProxy(wireMock);
+        if (initProxiedServers) {
+            initWireMockServersForProxy(wireMock);
+        }
 
         return wireMock.port();
     }
 
+
+    @Override
+    public WireMockCreater loadWireMockCreater() {
+        final AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+        context.scan(this.getClass().getPackage().getName());
+        context.refresh();
+
+        final ConfigurableEnvironment configurableEnvironment = context.getEnvironment();
+        final String initProxiedServersAsString = configurableEnvironment.getProperty(getWiremockInitProxiedServersPropertyName());
+        final Optional<String> initProxiedServersAsStringOptional = Optional.ofNullable(initProxiedServersAsString);
+        final String initProxiedServersDefault = String.valueOf(INIT_PROXIED_SERVERS_DEFAULT);
+        final String initProxiedServersFixed = initProxiedServersAsStringOptional.orElse(initProxiedServersDefault);
+
+        this.initProxiedServers = Boolean.parseBoolean(initProxiedServersFixed);
+
+        return super.loadWireMockCreater();
+    }
     @Override
     public Collection<WireMockServer> initWireMockServersForProxy(WireMockServer wireMockProxy) {
         return initWireMockServersForProxy(wireMockProxy, null);
